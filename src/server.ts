@@ -1,13 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-console.log('AWS Config:', {
-  region: process.env.AWS_REGION,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID?.substring(0, 10) + '...',
-  bucket: process.env.AWS_S3_BUCKET_NAME
-});
-
-
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -15,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import pool from './db';
 import { uploadToS3, getDownloadUrl } from './s3';
-
+import { analyzeDocument } from './ai';
 
 
 const app = express();
@@ -54,20 +47,18 @@ const upload = multer({
 
 // Mock bookmark generation (our fake AI)
 const generateMockBookmarks = (filename: string) => {
-  const templates = [
-    { label: "Medical Records – Radiology", category: "medical_radiology" },
-    { label: "CT Scan Results", category: "medical_radiology" },
-    { label: "MRI Report", category: "medical_radiology" },
-    { label: "X-Ray Images", category: "medical_radiology" },
-    { label: "Accident Photos", category: "photos" },
-    { label: "Vehicle Damage Photos", category: "photos" },
-    { label: "Scene Photos", category: "photos" },
-    { label: "Repair Estimate", category: "estimate" },
-    { label: "Initial Estimate", category: "estimate" },
-    { label: "Supplemental Estimate", category: "estimate" },
-    { label: "Police Report", category: "other" },
-    { label: "Witness Statements", category: "other" }
-  ];
+    const templates = [
+    { label: "Executive Summary", category: "sections" },
+    { label: "Introduction", category: "sections" },
+    { label: "Main Content", category: "sections" },
+    { label: "Methodology", category: "sections" },
+    { label: "Charts and Graphs", category: "images" },
+    { label: "Diagrams", category: "images" },
+    { label: "Data Tables", category: "tables" },
+    { label: "Financial Summary", category: "tables" },
+    { label: "References", category: "references" },
+    { label: "Appendix", category: "references" }
+    ];
 
   const count = Math.floor(Math.random() * 8) + 3;
   const bookmarks = [];
@@ -136,8 +127,32 @@ app.post('/api/process/:documentId', async (req: Request, res: Response) => {
   try {
     const { documentId } = req.params;
     
-    // Generate bookmarks
-    const bookmarks = generateMockBookmarks('');
+    // Get document info from database
+    const docResult = await pool.query(
+      'SELECT stored_filename FROM documents WHERE id = $1',
+      [documentId]
+    );
+
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const storedFilename = docResult.rows[0].stored_filename;
+    const filePath = `uploads/${storedFilename}`;
+
+    // Analyze with AI if file exists locally
+    let bookmarks;
+    if (fs.existsSync(filePath)) {
+      console.log('Analyzing document with AI...');
+      bookmarks = await analyzeDocument(filePath);
+      
+      // Clean up local file after processing
+    //   fs.unlinkSync(filePath);
+    } else {
+      // File already cleaned up, use mock
+      console.log('File not found locally, using mock bookmarks');
+      bookmarks = generateMockBookmarks('');
+    }
 
     // Insert bookmarks into database
     for (const bookmark of bookmarks) {
