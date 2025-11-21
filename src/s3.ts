@@ -26,7 +26,7 @@ export const uploadToS3 = async (filePath: string, key: string): Promise<string>
   await s3Client.send(command);
 
   // Delete local file after upload
-  fs.unlinkSync(filePath);
+//   fs.unlinkSync(filePath);
 
   return key;
 };
