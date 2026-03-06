@@ -2,18 +2,13 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { Bookmark } from './types';
 
 const execAsync = promisify(exec);
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY!,
 });
-
-interface Bookmark {
-  page: number;
-  label: string;
-  category: 'sections' | 'images' | 'tables' | 'references';
-}
 
 export const analyzeDocument = async (filePath: string): Promise<Bookmark[]> => {
   try {
