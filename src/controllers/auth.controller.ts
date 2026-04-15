@@ -1,6 +1,12 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import pool from '../db';
+
+// bcrypt work factor. 12 is the current reasonable default (2026):
+// ~250ms per hash on modern hardware — slow enough to deter brute-force,
+// fast enough not to bog down the API.
+const BCRYPT_ROUNDS = 12;
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -17,9 +23,11 @@ export const register = async (req: Request, res: Response) => {
       return;
     }
 
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
     const result = await pool.query(
       'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id, username',
-      [username, password]
+      [username, passwordHash]
     );
 
     const user = result.rows[0];
@@ -58,7 +66,8 @@ export const login = async (req: Request, res: Response) => {
 
     const user = result.rows[0];
 
-    if (password !== user.password) {
+    const passwordValid = await bcrypt.compare(password, user.password);
+    if (!passwordValid) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
